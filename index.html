@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="theme-color" content="#000000"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <title>Model Nexus</title>
+
+  <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Syne:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@400,0&display=swap" rel="stylesheet"/>
+
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :root {
+      --primary: #00E5FF;
+      --accent:  #FF007F;
+      --claude:  #FFB266;
+      --gpt:     #10A37F;
+      --gemini:  #FF007F;
+    }
+
+    html, body {
+      height: 100%;
+      height: 100dvh;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+      color: #F8F9FA;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    /* ── Aurora background ── */
+    .aurora-bg {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .aurora-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(90px);
+      animation: drift 10s ease-in-out infinite;
+    }
+    .orb-1 { width: 480px; height: 360px; background: rgba(0, 229, 255, 0.07);  top: -15%; left: -10%; animation-delay: 0s; }
+    .orb-2 { width: 400px; height: 400px; background: rgba(255, 0, 127, 0.06);  bottom: 10%; right: -15%; animation-delay: -4s; }
+    .orb-3 { width: 320px; height: 220px; background: rgba(255, 178, 102, 0.05); top: 35%; left: 25%;  animation-delay: -7s; }
+    @keyframes drift {
+      0%,100% { transform: translate(0,0) scale(1); }
+      33%      { transform: translate(18px,-14px) scale(1.04); }
+      66%      { transform: translate(-12px,10px) scale(0.97); }
+    }
+
+    /* ── Blurred chat backdrop ── */
+    .chat-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      padding: 52px 20px 300px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      overflow: hidden;
+      opacity: 0.3;
+      filter: blur(3px);
+      pointer-events: none;
+    }
+    .chat-bubble {
+      max-width: 72%;
+      padding: 11px 15px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: rgba(255,255,255,0.75);
+      background: rgba(255,255,255,0.045);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+    .chat-bubble.user  { align-self: flex-end;   border-radius: 18px 18px 4px 18px; }
+    .chat-bubble.agent { align-self: flex-start;  border-radius: 18px 18px 18px 4px; border-left: 2px solid var(--primary); background: rgba(0,229,255,0.04); }
+
+    /* ── Overlay ── */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      background: rgba(0,0,0,0.62);
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+      transition: opacity 0.3s ease;
+    }
+    .overlay.hidden { opacity: 0; pointer-events: none; }
+
+    /* ── Bottom sheet ── */
+    .sheet {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      max-width: 500px;
+      margin: 0 auto;
+      z-index: 3;
+      background: rgba(10, 10, 16, 0.88);
+      backdrop-filter: blur(36px);
+      -webkit-backdrop-filter: blur(36px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-bottom: none;
+      border-radius: 28px 28px 0 0;
+      box-shadow: 0 -12px 48px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset;
+      will-change: transform;
+      transition: transform 0.38s cubic-bezier(0.32, 0.72, 0, 1);
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .sheet.dragging   { transition: none; }
+    .sheet.dismissed  { transform: translateY(110%); }
+
+    /* ── Drag handle ── */
+    .drag-handle {
+      display: flex;
+      justify-content: center;
+      padding: 14px 0 8px;
+      cursor: grab;
+    }
+    .drag-handle:active { cursor: grabbing; }
+    .drag-pill {
+      width: 36px;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.16);
+    }
+
+    /* ── Model card ── */
+    .model-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 13px 15px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      transition: background 0.28s ease, border-color 0.28s ease, box-shadow 0.28s ease;
+    }
+    .model-card.active-claude { background: rgba(255,178,102,0.07); border-color: rgba(255,178,102,0.38); }
+    .model-card.active-gpt    { background: rgba(16,163,127,0.07);  border-color: rgba(16,163,127,0.38);  }
+    .model-card.active-gemini { background: rgba(255,0,127,0.07);   border-color: rgba(255,0,127,0.38);   }
+    .model-card.shake { animation: shake 0.38s ease; }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%     { transform: translateX(-7px); }
+      40%     { transform: translateX(7px); }
+      60%     { transform: translateX(-4px); }
+      80%     { transform: translateX(4px); }
+    }
+
+    /* ── Model icon ── */
+    .model-icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04);
+      flex-shrink: 0;
+      transition: box-shadow 0.28s ease, border-color 0.28s ease, background 0.28s ease;
+    }
+    .icon-claude { background: rgba(255,178,102,0.12); border-color: rgba(255,178,102,0.3); }
+    .icon-gpt    { background: rgba(16,163,127,0.12);  border-color: rgba(16,163,127,0.3);  }
+    .icon-gemini { background: rgba(255,0,127,0.12);   border-color: rgba(255,0,127,0.3);   }
+    .icon-off    { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); }
+
+    .model-icon .material-symbols-outlined { font-size: 22px; transition: color 0.28s ease; }
+
+    /* ── Toggle ── */
+    .toggle {
+      flex-shrink: 0;
+      width: 52px;
+      height: 30px;
+      border-radius: 15px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.08);
+      position: relative;
+      cursor: pointer;
+      transition: background 0.25s ease, border-color 0.25s ease;
+    }
+    .toggle-knob {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.3);
+      transition: transform 0.26s cubic-bezier(0.34,1.56,0.64,1), background 0.25s ease, box-shadow 0.25s ease;
+    }
+    .toggle.on .toggle-knob { transform: translateX(22px); }
+
+    .toggle.on-claude { background: rgba(255,178,102,0.2); border-color: rgba(255,178,102,0.5); }
+    .toggle.on-claude .toggle-knob { background: #FFB266; box-shadow: 0 0 14px rgba(255,178,102,0.65); }
+
+    .toggle.on-gpt    { background: rgba(16,163,127,0.2);  border-color: rgba(16,163,127,0.5);  }
+    .toggle.on-gpt .toggle-knob    { background: #10A37F; box-shadow: 0 0 14px rgba(16,163,127,0.65);  }
+
+    .toggle.on-gemini { background: rgba(255,0,127,0.2);   border-color: rgba(255,0,127,0.5);   }
+    .toggle.on-gemini .toggle-knob { background: #FF007F; box-shadow: 0 0 14px rgba(255,0,127,0.65);   }
+
+    /* ── Active badge ── */
+    .active-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 11px;
+      border-radius: 20px;
+      background: rgba(0,229,255,0.08);
+      border: 1px solid rgba(0,229,255,0.22);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--primary);
+      transition: background 0.2s ease;
+    }
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--primary);
+      box-shadow: 0 0 7px rgba(0,229,255,0.8);
+      animation: pulsate 2s ease infinite;
+    }
+    @keyframes pulsate {
+      0%,100% { opacity:1; transform: scale(1); }
+      50%      { opacity:0.55; transform: scale(0.75); }
+    }
+
+    /* ── Synthesis chips ── */
+    .chip {
+      flex: 1;
+      padding: 8px 6px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: transparent;
+      color: rgba(255,255,255,0.35);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s, color 0.2s;
+    }
+    .chip.active {
+      background: rgba(0,229,255,0.1);
+      border-color: rgba(0,229,255,0.35);
+      color: var(--primary);
+    }
+    .chip:active { transform: scale(0.97); }
+
+    /* ── Slider ── */
+    .slider-wrap {
+      position: relative;
+      height: 24px;
+      display: flex;
+      align-items: center;
+    }
+    .slider-track {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.1);
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .slider-fill {
+      height: 100%;
+      width: 50%;
+      border-radius: 2px;
+      background: linear-gradient(90deg, #FFB266, #00E5FF);
+      pointer-events: none;
+      transition: width 0.04s linear;
+    }
+    .routing-slider {
+      position: relative;
+      width: 100%;
+      height: 24px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      outline: none;
+      cursor: pointer;
+      margin: 0;
+    }
+    .routing-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2.5px solid var(--primary);
+      box-shadow: 0 0 18px rgba(0,229,255,0.7);
+      cursor: pointer;
+      transition: box-shadow 0.18s, transform 0.18s;
+    }
+    .routing-slider:active::-webkit-slider-thumb {
+      box-shadow: 0 0 28px rgba(0,229,255,0.9);
+      transform: scale(1.18);
+    }
+    .routing-slider::-moz-range-thumb {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2.5px solid var(--primary);
+      box-shadow: 0 0 18px rgba(0,229,255,0.7);
+      cursor: pointer;
+    }
+    .routing-slider::-webkit-slider-runnable-track { background: transparent; height: 4px; }
+    .routing-slider::-moz-range-track { background: transparent; height: 4px; }
+
+    /* ── Apply button ── */
+    .apply-btn {
+      width: 100%;
+      padding: 15px;
+      border-radius: 14px;
+      border: 1px solid rgba(0,229,255,0.28);
+      background: linear-gradient(135deg, rgba(0,229,255,0.12), rgba(0,229,255,0.04));
+      color: var(--primary);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: background 0.2s, border-color 0.2s, transform 0.12s;
+    }
+    .apply-btn:active { transform: scale(0.98); }
+    .apply-btn.applied {
+      background: linear-gradient(135deg, rgba(0,229,255,0.22), rgba(0,229,255,0.1));
+      border-color: rgba(0,229,255,0.5);
+    }
+    .ripple {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(0,229,255,0.28);
+      transform: scale(0);
+      animation: ripple-anim 0.55s linear;
+      pointer-events: none;
+    }
+    @keyframes ripple-anim { to { transform: scale(4.5); opacity: 0; } }
+
+    /* ── Section label ── */
+    .section-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: #8B949E;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 9px;
+    }
+
+    /* ── Glass panel ── */
+    .glass-panel {
+      background: rgba(255,255,255,0.03);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 17px;
+    }
+
+    /* ── Safe bottom padding ── */
+    .pb-safe { padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+
+    /* ── Toast notification ── */
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-80px);
+      z-index: 100;
+      padding: 10px 20px;
+      border-radius: 24px;
+      background: rgba(10,10,16,0.9);
+      border: 1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(20px);
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.8);
+      white-space: nowrap;
+      transition: transform 0.32s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- Aurora bg -->
+<div class="aurora-bg">
+  <div class="aurora-orb orb-1"></div>
+  <div class="aurora-orb orb-2"></div>
+  <div class="aurora-orb orb-3"></div>
+</div>
+
+<!-- Blurred chat backdrop -->
+<div class="chat-backdrop">
+  <div class="chat-bubble user">Summoning the swarm to analyze the multi-threaded architecture...</div>
+  <div class="chat-bubble agent">Processing request across designated nodes. Establishing synthesis protocols.</div>
+  <div class="chat-bubble user">Which models should handle the reasoning layer?</div>
+  <div class="chat-bubble agent">Routing to Claude for creative synthesis, Gemini for parallel stream analysis...</div>
+</div>
+
+<!-- Dimmer overlay -->
+<div class="overlay" id="overlay"></div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Bottom Sheet -->
+<div class="sheet" id="sheet">
+
+  <!-- Drag handle -->
+  <div class="drag-handle" id="drag-handle">
+    <div class="drag-pill"></div>
+  </div>
+
+  <div style="padding: 0 20px; display: flex; flex-direction: column; gap: 16px;">
+
+    <!-- Header -->
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <div>
+        <h2 style="font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 700; line-height: 1.1; margin: 0;">Model Nexus</h2>
+        <p style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #8B949E; margin: 4px 0 0; text-transform: uppercase; letter-spacing: 0.12em;">Orchestration Panel</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div class="active-badge">
+          <div class="pulse-dot"></div>
+          <span id="active-count-label">2 Active</span>
+        </div>
+        <button id="close-btn" style="width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; cursor: pointer; color: rgba(255,255,255,0.5); flex-shrink: 0;">
+          <span class="material-symbols-outlined" style="font-size: 18px; line-height: 1;">close</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Model Cards -->
+    <div style="display: flex; flex-direction: column; gap: 9px;">
+
+      <!-- Claude -->
+      <div class="model-card active-claude" id="card-claude">
+        <div style="display: flex; align-items: center; gap: 13px;">
+          <div class="model-icon icon-claude" id="micon-claude" style="box-shadow: 0 0 22px rgba(255,178,102,0.18);">
+            <span class="material-symbols-outlined" id="msym-claude" style="color: #FFB266;">auto_awesome</span>
+          </div>
+          <div>
+            <div style="font-weight: 600; font-size: 15px;">Claude 3.5</div>
+            <div style="font-size: 12px; color: #8B949E; margin-top: 2px;">
+              Anthropic &middot; <span id="role-claude" style="color: rgba(255,178,102,0.8);">Primary</span>
+            </div>
+          </div>
+        </div>
+        <div class="toggle on on-claude" id="toggle-claude">
+          <div class="toggle-knob"></div>
+        </div>
+      </div>
+
+      <!-- GPT-4o -->
+      <div class="model-card" id="card-gpt">
+        <div style="display: flex; align-items: center; gap: 13px;">
+          <div class="model-icon" id="micon-gpt">
+            <span class="material-symbols-outlined" id="msym-gpt" style="color: rgba(255,255,255,0.45);">blur_on</span>
+          </div>
+          <div>
+            <div style="font-weight: 600; font-size: 15px;">GPT-4o</div>
+            <div style="font-size: 12px; color: #8B949E; margin-top: 2px;">
+              OpenAI &middot; <span id="role-gpt">Standby</span>
+            </div>
+          </div>
+        </div>
+        <div class="toggle" id="toggle-gpt">
+          <div class="toggle-knob"></div>
+        </div>
+      </div>
+
+      <!-- Gemini -->
+      <div class="model-card active-gemini" id="card-gemini">
+        <div style="display: flex; align-items: center; gap: 13px;">
+          <div class="model-icon icon-gemini" id="micon-gemini" style="box-shadow: 0 0 22px rgba(255,0,127,0.15);">
+            <span class="material-symbols-outlined" id="msym-gemini" style="color: #FF007F;">stream</span>
+          </div>
+          <div>
+            <div style="font-weight: 600; font-size: 15px;">Gemini 1.5</div>
+            <div style="font-size: 12px; color: #8B949E; margin-top: 2px;">
+              Google &middot; <span id="role-gemini" style="color: rgba(255,0,127,0.8);">Secondary</span>
+            </div>
+          </div>
+        </div>
+        <div class="toggle on on-gemini" id="toggle-gemini">
+          <div class="toggle-knob"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Synthesis Mode -->
+    <div>
+      <div class="section-label">Synthesis Mode</div>
+      <div style="display: flex; gap: 8px;">
+        <button class="chip" data-mode="sequential">Sequential</button>
+        <button class="chip active" data-mode="parallel">Parallel</button>
+        <button class="chip" data-mode="consensus">Consensus</button>
+      </div>
+    </div>
+
+    <!-- Routing Bias Slider -->
+    <div class="glass-panel">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <div class="section-label" style="margin-bottom: 0;">Routing Bias</div>
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--primary); font-weight: 500;" id="slider-label">Balanced</div>
+      </div>
+      <div class="slider-wrap">
+        <div class="slider-track">
+          <div class="slider-fill" id="slider-fill"></div>
+        </div>
+        <input class="routing-slider" id="routing-slider" type="range" min="0" max="100" value="50"/>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-top: 11px;">
+        <span style="font-size: 12px; color: rgba(255,178,102,0.65);">Creative</span>
+        <span style="font-size: 12px; color: rgba(0,229,255,0.65);">Analytical</span>
+      </div>
+    </div>
+
+    <!-- Apply Button -->
+    <div class="pb-safe">
+      <button class="apply-btn" id="apply-btn">
+        <span id="apply-label">Apply Configuration</span>
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  // ── State ──────────────────────────────────────────────────────────────
+  const state = {
+    models: {
+      claude: { active: true,  color: '#FFB266', activeCard: 'active-claude', activeToggle: 'on-claude', iconClass: 'icon-claude', iconColor: '#FFB266', glow: 'rgba(255,178,102,0.18)' },
+      gpt:    { active: false, color: '#10A37F', activeCard: 'active-gpt',    activeToggle: 'on-gpt',    iconClass: 'icon-gpt',    iconColor: '#10A37F', glow: 'rgba(16,163,127,0.18)'  },
+      gemini: { active: true,  color: '#FF007F', activeCard: 'active-gemini', activeToggle: 'on-gemini', iconClass: 'icon-gemini', iconColor: '#FF007F', glow: 'rgba(255,0,127,0.15)'   },
+    },
+    routing: 50,
+    synthesis: 'parallel',
+    changed: false,
+  };
+
+  const IDS = ['claude', 'gpt', 'gemini'];
+  const ROLES = ['Primary', 'Secondary', 'Tertiary'];
+
+  // ── Helpers ────────────────────────────────────────────────────────────
+  function $ (id) { return document.getElementById(id); }
+
+  function activeCount () {
+    return IDS.filter(id => state.models[id].active).length;
+  }
+
+  function updateActiveCount () {
+    const n = activeCount();
+    $('active-count-label').textContent = n + ' Active';
+  }
+
+  function updateRoles () {
+    let roleIdx = 0;
+    IDS.forEach(id => {
+      const m = state.models[id];
+      const roleEl = $('role-' + id);
+      if (m.active) {
+        roleEl.textContent = ROLES[roleIdx++] || 'Active';
+        roleEl.style.color = m.color + 'cc';
+      } else {
+        roleEl.textContent = 'Standby';
+        roleEl.style.color = '';
+      }
+    });
+  }
+
+  function markChanged () {
+    state.changed = true;
+    const btn = $('apply-btn');
+    btn.classList.remove('applied');
+    $('apply-label').textContent = 'Apply Configuration';
+  }
+
+  // ── Toggle model ───────────────────────────────────────────────────────
+  function toggleModel (id) {
+    const m = state.models[id];
+    if (m.active && activeCount() === 1) {
+      const card = $('card-' + id);
+      card.classList.remove('shake');
+      void card.offsetWidth;
+      card.classList.add('shake');
+      card.addEventListener('animationend', () => card.classList.remove('shake'), { once: true });
+      showToast('At least one model must be active');
+      return;
+    }
+
+    m.active = !m.active;
+
+    const card   = $('card-'   + id);
+    const toggle = $('toggle-' + id);
+    const micon  = $('micon-'  + id);
+    const msym   = $('msym-'   + id);
+
+    if (m.active) {
+      card.classList.add(m.activeCard);
+      toggle.classList.add('on', m.activeToggle);
+      micon.className = 'model-icon ' + m.iconClass;
+      micon.style.boxShadow = '0 0 22px ' + m.glow;
+      msym.style.color = m.iconColor;
+    } else {
+      card.classList.remove(m.activeCard);
+      toggle.classList.remove('on', m.activeToggle);
+      micon.className = 'model-icon';
+      micon.style.boxShadow = '';
+      msym.style.color = 'rgba(255,255,255,0.4)';
+    }
+
+    updateActiveCount();
+    updateRoles();
+    markChanged();
+  }
+
+  IDS.forEach(id => {
+    $('toggle-' + id).addEventListener('click', () => toggleModel(id));
+  });
+
+  // ── Synthesis chips ────────────────────────────────────────────────────
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      state.synthesis = chip.dataset.mode;
+      markChanged();
+    });
+  });
+
+  // ── Routing slider ─────────────────────────────────────────────────────
+  const LABELS = [[0,18,'Creative'],[19,38,'Mostly Creative'],[39,61,'Balanced'],[62,81,'Mostly Analytical'],[82,100,'Analytical']];
+
+  function getLabel (v) {
+    for (const [lo, hi, lbl] of LABELS) if (v >= lo && v <= hi) return lbl;
+    return 'Balanced';
+  }
+
+  function updateSlider (v) {
+    $('slider-fill').style.width = v + '%';
+    $('slider-label').textContent = getLabel(v);
+    state.routing = v;
+  }
+
+  const sliderEl = $('routing-slider');
+  sliderEl.addEventListener('input', e => { updateSlider(+e.target.value); markChanged(); });
+  updateSlider(50);
+
+  // ── Apply button ───────────────────────────────────────────────────────
+  $('apply-btn').addEventListener('click', function (e) {
+    const rect = this.getBoundingClientRect();
+    const rip = document.createElement('span');
+    rip.className = 'ripple';
+    const sz = Math.max(rect.width, rect.height);
+    const cx = (e.clientX || rect.left + rect.width / 2) - rect.left - sz / 2;
+    const cy = (e.clientY || rect.top + rect.height / 2) - rect.top - sz / 2;
+    rip.style.cssText = `width:${sz}px;height:${sz}px;left:${cx}px;top:${cy}px;`;
+    this.appendChild(rip);
+    rip.addEventListener('animationend', () => rip.remove());
+
+    this.classList.add('applied');
+    $('apply-label').textContent = '✓ Configuration Applied';
+    state.changed = false;
+
+    const active = IDS.filter(id => state.models[id].active).map(id => state.models[id]);
+    const names  = IDS.filter(id => state.models[id].active)
+      .map(id => ({ claude: 'Claude', gpt: 'GPT-4o', gemini: 'Gemini' }[id]))
+      .join(' + ');
+    showToast(names + ' · ' + state.synthesis.charAt(0).toUpperCase() + state.synthesis.slice(1));
+  });
+
+  // ── Toast ──────────────────────────────────────────────────────────────
+  let toastTimer;
+  function showToast (msg) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+  }
+
+  // ── Bottom sheet drag-to-dismiss ───────────────────────────────────────
+  const sheet  = $('sheet');
+  const handle = $('drag-handle');
+  const overlay = $('overlay');
+
+  let dragStart = 0, dragCurrent = 0, isDragging = false;
+
+  function sheetY () {
+    const m = new DOMMatrix(window.getComputedStyle(sheet).transform);
+    return m.m42;
+  }
+
+  function onPointerDown (e) {
+    isDragging = true;
+    dragStart  = e.touches ? e.touches[0].clientY : e.clientY;
+    dragCurrent = sheetY();
+    sheet.classList.add('dragging');
+  }
+
+  function onPointerMove (e) {
+    if (!isDragging) return;
+    e.preventDefault();
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+    const delta = y - dragStart;
+    const newY = Math.max(0, dragCurrent + delta);
+    sheet.style.transform = `translateY(${newY}px)`;
+
+    const progress = Math.min(newY / sheet.offsetHeight, 1);
+    overlay.style.opacity = 1 - progress * 0.6;
+  }
+
+  function onPointerUp () {
+    if (!isDragging) return;
+    isDragging = false;
+    sheet.classList.remove('dragging');
+
+    const currentY = parseFloat(sheet.style.transform.replace(/[^0-9.-]/g, '') || '0');
+    sheet.style.transform = '';
+
+    if (currentY > sheet.offsetHeight * 0.32) {
+      dismissSheet();
+    } else {
+      overlay.style.opacity = '';
+    }
+  }
+
+  function dismissSheet () {
+    sheet.classList.add('dismissed');
+    overlay.classList.add('hidden');
+    sheet.style.transform = '';
+  }
+
+  handle.addEventListener('touchstart',  onPointerDown, { passive: true });
+  handle.addEventListener('touchmove',   onPointerMove, { passive: false });
+  handle.addEventListener('touchend',    onPointerUp);
+  handle.addEventListener('mousedown',   onPointerDown);
+  document.addEventListener('mousemove', onPointerMove);
+  document.addEventListener('mouseup',   onPointerUp);
+
+  $('close-btn').addEventListener('click', dismissSheet);
+
+  overlay.addEventListener('click', dismissSheet);
+
+  // ── Init ───────────────────────────────────────────────────────────────
+  updateActiveCount();
+  updateRoles();
+
+})();
+</script>
+</body>
+</html>
